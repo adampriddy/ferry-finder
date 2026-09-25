@@ -208,7 +208,9 @@
   const rebuildCal = () => { cal = L.buildCalendar(terms, banks, opts.schoolHolidaysOnly ? opts.buffer : 0); };
   const routes = new Map(data.routes.map((r) => [r.id, r]));
   const routeName = (id) => { const r = routes.get(id); return r ? `${r.from} to ${r.to}` : id; };
-  const available = Object.keys(data.sailings).filter((k) => data.sailings[k].length);
+  // Every crossing the scanner checks, including ones with nothing scheduled yet (e.g. St Malo to Plymouth).
+  const available = Object.keys(data.sailings);
+  const count = (id) => (data.sailings[id] || []).length;
 
   // Meta line
   const p = data.party;
@@ -220,11 +222,11 @@
   const fill = (sel, homeFirst) => {
     const ids = available.filter((id) => (routes.get(id)?.fromCountry === 'GBR') === homeFirst)
       .sort((a, b) => routeName(a).localeCompare(routeName(b)));
-    sel.innerHTML = ids.map((id) => `<option value="${id}">${routeName(id)}</option>`).join('');
+    sel.innerHTML = ids.map((id) => `<option value="${id}">${routeName(id)}${count(id) ? '' : ' (no sailings yet)'}</option>`).join('');
   };
   fill($('outRoute'), true); fill($('backRoute'), false);
   const reverse = (id) => id.split('-').reverse().join('-');
-  if (!available.includes(opts.outRoute)) opts.outRoute = $('outRoute').options[0]?.value;
+  if (!available.includes(opts.outRoute)) opts.outRoute = [...$('outRoute').options].find((o) => count(o.value))?.value || $('outRoute').options[0]?.value;
   if (opts.same || !available.includes(opts.backRoute)) opts.backRoute = reverse(opts.outRoute);
 
   // Controls wiring
