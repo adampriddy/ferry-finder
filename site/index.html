@@ -115,6 +115,7 @@
   .legs-list li:first-child { border-top: 0; }
   .legs-list li:first-child .p { background: var(--buoy); border-radius: 6px; padding: 0 6px; }
   .legs-list .when { font-weight: 600; display: block; }
+  .legs-list .route { display: block; font-size: 14px; font-weight: 600; color: var(--ink-2); }
   .legs-list .sub { color: var(--slate); font-size: 14px; display: block; }
   .legs-list .tag { font-size: 12px; margin: 4px 6px 0 0; display: inline-block; }
   .legs-list .p { font: 700 24px/1.2 var(--display); align-self: start; }
@@ -213,10 +214,17 @@
   let cal;
   const rebuildCal = () => { cal = L.buildCalendar(terms, banks, opts.schoolHolidaysOnly ? opts.buffer : 0); };
   const routes = new Map(data.routes.map((r) => [r.id, r]));
-  const routeName = (id) => { const r = routes.get(id); return r ? `${r.from} to ${r.to}` : id; };
+  const routeName = (id) => { if (id === 'ANY') return 'Any crossing'; const r = routes.get(id); return r ? `${r.from} to ${r.to}` : id; };
   // Every crossing the scanner checks, including ones with nothing scheduled yet (e.g. St Malo to Plymouth).
   const available = Object.keys(data.sailings);
-  const count = (id) => (data.sailings[id] || []).length;
+  for (const [id, rows] of Object.entries(data.sailings)) rows.forEach((r) => { r.route = id; });
+  const ANY = 'ANY';
+  const homeBound = (id) => routes.get(id)?.toCountry === 'GBR';
+  // Rows for a dropdown choice; "Any crossing" pools every route in that direction.
+  const rowsFor = (id, back) => id === ANY
+    ? available.filter((k) => homeBound(k) === back).flatMap((k) => data.sailings[k])
+    : (data.sailings[id] || []);
+  const count = (id) => (id === ANY ? 1 : (data.sailings[id] || []).length);
 
   // Meta line
   const p = data.party;
@@ -228,12 +236,12 @@
   const fill = (sel, homeFirst) => {
     const ids = available.filter((id) => (routes.get(id)?.fromCountry === 'GBR') === homeFirst)
       .sort((a, b) => routeName(a).localeCompare(routeName(b)));
-    sel.innerHTML = ids.map((id) => `<option value="${id}">${routeName(id)}${count(id) ? '' : ' (no sailings yet)'}</option>`).join('');
+    sel.innerHTML = `<option value="${ANY}">Any crossing (cheapest)</option>` + ids.map((id) => `<option value="${id}">${routeName(id)}${count(id) ? '' : ' (no sailings yet)'}</option>`).join('');
   };
   fill($('outRoute'), true); fill($('backRoute'), false);
-  const reverse = (id) => id.split('-').reverse().join('-');
-  if (!available.includes(opts.outRoute)) opts.outRoute = [...$('outRoute').options].find((o) => count(o.value))?.value || $('outRoute').options[0]?.value;
-  if (opts.same || !available.includes(opts.backRoute)) opts.backRoute = reverse(opts.outRoute);
+  const reverse = (id) => (id === 'ANY' ? 'ANY' : id.split('-').reverse().join('-'));
+  if (opts.outRoute !== 'ANY' && !available.includes(opts.outRoute)) opts.outRoute = [...$('outRoute').options].find((o) => o.value !== 'ANY' && count(o.value))?.value;
+  if (opts.same || (opts.backRoute !== 'ANY' && !available.includes(opts.backRoute))) opts.backRoute = reverse(opts.outRoute);
 
   // Controls wiring
   const syncControls = () => {
@@ -353,7 +361,7 @@
   });
 
   const legHtml = (label, row, cost) => `
-    <div class="leg"><b>${label}</b><span class="when">${nice(row[F.depDate])} ${row[F.depTime]}</span>
+    <div class="leg"><b>${label}</b><span class="when">${nice(row[F.depDate])} ${row[F.depTime]}${opts.outRoute === 'ANY' || opts.backRoute === 'ANY' ? `, ${routeName(row.route)}` : ''}</span>
     <span class="sub">arrives ${row[F.arrDate] !== row[F.depDate] ? nice(row[F.arrDate]) + ' ' : ''}${row[F.arrTime]}, ${row[F.ship] || ''}${cost.cabin ? ', cabin ' + gbp(cost.cabin) : ''}</span></div>`;
 
   function changeTag(t) {
@@ -381,6 +389,7 @@
       ? `<span class="tag ${c.fare < was ? 'drop' : 'rise'}">${c.fare < was ? 'Down' : 'Up'} ${gbp(Math.abs(c.fare - was))}</span>` : '';
     return `<li>
       <span><span class="when">${nice(r[F.depDate])} ${r[F.depTime]}</span>
+      ${(dir === 'out' ? opts.outRoute : opts.backRoute) === 'ANY' ? `<span class="route">${routeName(r.route)}</span>` : ''}
       <span class="sub">arrives ${r[F.arrDate] !== r[F.depDate] ? nice(r[F.arrDate]) + ' ' : ''}${r[F.arrTime]}, ${r[F.ship] || ''}${c.cabin ? ', incl. cabin ' + gbp(c.cabin) : ''}</span>
       ${missedTag(l.missed)}${drop}${isNew(r) ? '<span class="tag new">Newly released</span>' : ''}</span>
       <span class="p">${gbp(c.total)}</span></li>`;
@@ -420,7 +429,7 @@
     const logicOpts = { nightsMin: opts.nightsMin, nightsMax: opts.nightsMax, fareType: opts.fareType,
       cabinMode: opts.cabins ? 'nights' : 'required', schoolHolidaysOnly: opts.schoolHolidaysOnly,
       leaveAfterSchool: opts.leaveAfterSchool, afterSchoolTime: opts.afterSchoolTime };
-    const outRows = data.sailings[opts.outRoute] || [], backRows = data.sailings[opts.backRoute] || [];
+    const outRows = rowsFor(opts.outRoute, false), backRows = rowsFor(opts.backRoute, true);
     renderStrip(outRows, logicOpts);
 
     if (opts.view === 'legs') { renderLegs(outRows, backRows, logicOpts); return; }
@@ -448,7 +457,7 @@
           <div class="price">${gbp(best.total)}<small>${best.nights} night${best.nights > 1 ? 's' : ''}, return</small></div>
           <div class="tags"><span class="tag">Out ${gbp(best.outCost.total)}, back ${gbp(best.backCost.total)}</span>${missedTag(L.schoolDaysMissed(cal, best.out[F.depDate], best.out[F.depTime], best.back[F.arrDate], opts.afterSchoolTime, true))}${changeTag(best)}${newTag(best)}</div>
         </article>
-        ${rest.length ? `<ul class="more">${rest.map((t) => `<li><span>${nice(t.out[F.depDate])} ${t.out[F.depTime]} to ${nice(t.back[F.depDate])} ${t.back[F.depTime]}, ${t.nights} night${t.nights > 1 ? 's' : ''} ${missedTag(L.schoolDaysMissed(cal, t.out[F.depDate], t.out[F.depTime], t.back[F.arrDate], opts.afterSchoolTime, true))}${newTag(t)}</span><span class="p">${gbp(t.total)}</span></li>`).join('')}</ul>` : ''}
+        ${rest.length ? `<ul class="more">${rest.map((t) => `<li><span>${nice(t.out[F.depDate])} ${t.out[F.depTime]}${opts.outRoute === 'ANY' ? ' (' + routeName(t.out.route) + ')' : ''} to ${nice(t.back[F.depDate])} ${t.back[F.depTime]}${opts.backRoute === 'ANY' ? ' (' + routeName(t.back.route) + ')' : ''}, ${t.nights} night${t.nights > 1 ? 's' : ''} ${missedTag(L.schoolDaysMissed(cal, t.out[F.depDate], t.out[F.depTime], t.back[F.arrDate], opts.afterSchoolTime, true))}${newTag(t)}</span><span class="p">${gbp(t.total)}</span></li>`).join('')}</ul>` : ''}
       </section>`;
     }).join('');
   }
