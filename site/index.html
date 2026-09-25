@@ -28,6 +28,7 @@
   *, *::before, *::after { box-sizing: inherit; }
   body { margin: 0; background: var(--mist); color: var(--ink); font: 400 16px/1.5 var(--body); }
   button, select, input { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
   :focus-visible { outline: 3px solid var(--buoy); outline-offset: 2px; }
 
   /* ---- Signage band: the one loud thing ---- */
@@ -93,18 +94,33 @@
   .tag { padding: 2px 8px; border-radius: 99px; background: var(--mist); }
   .tag.drop { background: #e4f1e4; color: #255c2c; }
   .tag.rise { background: #f8e5e1; color: var(--harbour); }
+  .tag.term { background: #f8e5e1; color: var(--harbour); font-weight: 600; }
   .tag.new { background: var(--buoy); color: var(--ink); font-weight: 600; }
   .more .tag { font-size: 12px; margin-left: 6px; }
   .more { list-style: none; margin: 8px 0 0; padding: 0; }
   .more li { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 10px 4px; border-top: 1px solid var(--line); font-size: 15px; }
   .more li:first-child { border-top: 0; }
   .more .p { font: 600 20px var(--display); }
+  .legcols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .legcol { background: var(--white); border-radius: 12px; padding: 14px 16px 6px; }
+  .legcol h3 { font: 700 22px/1.1 var(--display); margin: 0 0 6px; }
+  .legcol h3 span { font: 400 14px var(--body); color: var(--slate); margin-left: 6px; }
+  .legs-list { list-style: none; margin: 0; padding: 0; }
+  .legs-list li { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .legs-list li:first-child { border-top: 0; }
+  .legs-list li:first-child .p { background: var(--buoy); border-radius: 6px; padding: 0 6px; }
+  .legs-list .when { font-weight: 600; display: block; }
+  .legs-list .sub { color: var(--slate); font-size: 14px; display: block; }
+  .legs-list .tag { font-size: 12px; margin: 4px 6px 0 0; display: inline-block; }
+  .legs-list .p { font: 700 24px/1.2 var(--display); align-self: start; }
+  .none-yet { color: var(--slate); font-size: 15px; margin: 6px 0 14px; }
   .empty { background: var(--white); border-radius: 12px; padding: 22px; margin-top: 26px; }
   .empty h2 { font: 700 26px var(--display); margin: 0 0 6px; }
   footer { color: var(--slate); font-size: 13px; padding: 0 20px 40px; }
   footer a { color: var(--ink); }
 
   @media (max-width: 640px) {
+    .legcols { grid-template-columns: 1fr; }
     .best { grid-template-columns: 1fr; }
     .price { text-align: left; }
     .controls { position: static; }
@@ -136,7 +152,12 @@
 
 <section class="controls" aria-label="Trip options">
   <div class="wrap">
-    <div class="ctl"><span class="ctl-name">Nights</span>
+    <div class="ctl"><span class="ctl-name">Show</span>
+      <span class="seg" role="group" aria-label="What to show">
+        <button data-view="legs">Out and back separately</button><button data-view="trips">Return trips</button>
+      </span>
+    </div>
+    <div class="ctl" id="nightsCtl"><span class="ctl-name">Nights</span>
       <span class="stepper"><button data-step="nightsMin:-1" aria-label="Fewer minimum nights">−</button><output id="nightsMin"></output><button data-step="nightsMin:1" aria-label="More minimum nights">+</button></span>
       <span class="ctl-name">to</span>
       <span class="stepper"><button data-step="nightsMax:-1" aria-label="Fewer maximum nights">−</button><output id="nightsMax"></output><button data-step="nightsMax:1" aria-label="More maximum nights">+</button></span>
@@ -149,6 +170,9 @@
     <label class="toggle"><input type="checkbox" id="cabins"> Add a cabin on night sailings</label>
     <label class="toggle"><input type="checkbox" id="schoolOnly" checked> School holidays only</label>
     <label class="toggle"><input type="checkbox" id="afterSchool" checked> Can leave after school</label>
+    <div class="ctl" id="bufferCtl"><span class="ctl-name">Extra school days either side</span>
+      <span class="stepper"><button data-step="buffer:-1" aria-label="Fewer extra days">−</button><output id="buffer"></output><button data-step="buffer:1" aria-label="More extra days">+</button></span>
+    </div>
   </div>
 </section>
 
@@ -168,7 +192,7 @@
   // Remember choices on this device.
   const saved = (() => { try { return JSON.parse(localStorage.getItem('ferry-opts') || '{}'); } catch { return {}; } })();
   const opts = Object.assign({ outRoute: 'GBPLY-FRROS', backRoute: 'FRROS-GBPLY', same: true, nightsMin: 3, nightsMax: 7,
-    fareType: 'cheapest', cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
+    fareType: 'cheapest', view: 'legs', buffer: 2, cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
   const save = () => { try { localStorage.setItem('ferry-opts', JSON.stringify(opts)); } catch {} };
 
   let data, terms, banks;
@@ -180,7 +204,8 @@
     $('results').innerHTML = `<div class="empty"><h2>No fares yet</h2><p>The page couldn't load its data (${e.message}). Run the scanner once from the Actions tab, then refresh.</p></div>`;
     return;
   }
-  const cal = L.buildCalendar(terms, banks);
+  let cal;
+  const rebuildCal = () => { cal = L.buildCalendar(terms, banks, opts.schoolHolidaysOnly ? opts.buffer : 0); };
   const routes = new Map(data.routes.map((r) => [r.id, r]));
   const routeName = (id) => { const r = routes.get(id); return r ? `${r.from} to ${r.to}` : id; };
   const available = Object.keys(data.sailings).filter((k) => data.sailings[k].length);
@@ -207,7 +232,10 @@
     $('outRoute').value = opts.outRoute; $('backRoute').value = opts.backRoute;
     $('backRoute').disabled = opts.same; $('sameRoute').checked = opts.same;
     $('nightsMin').textContent = opts.nightsMin; $('nightsMax').textContent = opts.nightsMax;
+    $('buffer').textContent = opts.buffer; $('bufferCtl').hidden = !opts.schoolHolidaysOnly;
     document.querySelectorAll('[data-fare]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.fare === opts.fareType));
+    document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === opts.view));
+    $('nightsCtl').hidden = opts.view !== 'trips';
     $('cabins').checked = opts.cabins; $('schoolOnly').checked = opts.schoolHolidaysOnly;
     $('afterSchool').checked = opts.leaveAfterSchool; $('afterSchool').disabled = !opts.schoolHolidaysOnly;
   };
@@ -216,10 +244,12 @@
   $('backRoute').onchange = (e) => change(() => { opts.backRoute = e.target.value; });
   $('sameRoute').onchange = (e) => change(() => { opts.same = e.target.checked; if (opts.same) opts.backRoute = reverse(opts.outRoute); });
   document.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => change(() => {
-    const [k, d] = b.dataset.step.split(':'); opts[k] = Math.max(1, Math.min(28, opts[k] + +d));
+    const [k, d] = b.dataset.step.split(':');
+    opts[k] = k === 'buffer' ? Math.max(0, Math.min(5, opts[k] + +d)) : Math.max(1, Math.min(28, opts[k] + +d));
     if (opts.nightsMin > opts.nightsMax) { if (k === 'nightsMin') opts.nightsMax = opts.nightsMin; else opts.nightsMin = opts.nightsMax; }
   }));
   document.querySelectorAll('[data-fare]').forEach((b) => b.onclick = () => change(() => { opts.fareType = b.dataset.fare; }));
+  document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => change(() => { opts.view = b.dataset.view; }));
   $('cabins').onchange = (e) => change(() => { opts.cabins = e.target.checked; });
   $('schoolOnly').onchange = (e) => change(() => { opts.schoolHolidaysOnly = e.target.checked; });
   $('afterSchool').onchange = (e) => change(() => { opts.leaveAfterSchool = e.target.checked; });
@@ -239,7 +269,7 @@
     for (let d = first; d <= last; d++) {
       const iso = L.fromDay(d), v = daily.get(iso);
       const b = document.createElement('div');
-      b.className = 'bar' + (v == null ? ' none' : (cal.windowFor(d) ? ' hol' : '')) + (focusDay === iso ? ' sel' : '');
+      b.className = 'bar' + (v == null ? ' none' : (cal.windowFor(d) && !cal.isTermDay(d) ? ' hol' : '')) + (focusDay === iso ? ' sel' : '');
       b.style.height = v == null ? '2px' : (18 + 78 * (v - min) / Math.max(1, max - min)) + 'px';
       b.dataset.day = iso;
       if (v != null) b.title = `${nice(iso)}: ${gbp(v)}`;
@@ -253,8 +283,8 @@
     }
     inner.appendChild(frag);
     cal.windows.forEach((w) => {
-      if (w.end < first || w.start > last) return;
-      const s = Math.max(w.start, first), e = Math.min(w.end, last);
+      const s = Math.max(w.baseStart, first), e = Math.min(w.baseEnd, last);
+      if (w.baseEnd < first || w.baseStart > last) return;
       const band = document.createElement('div');
       band.className = 'holband'; band.style.left = ((s - first) * W) + 'px'; band.style.width = ((e - s + 1) * W - 1) + 'px';
       inner.appendChild(band);
@@ -306,13 +336,55 @@
   const isNew = (row) => row[F.firstSeen] && data.baseline && row[F.firstSeen] > data.baseline && row[F.firstSeen] >= newCutoff;
   const newTag = (t) => (isNew(t.out) || isNew(t.back)) ? `<span class="tag new">Newly released</span>` : '';
 
+  const windowDates = (w) => w ? dLong.format(new Date(w.baseStart * 864e5)) + ' to ' + dLong.format(new Date(w.baseEnd * 864e5)) +
+    (cal.buffer ? `, plus up to ${cal.buffer} school day${cal.buffer > 1 ? 's' : ''} either side` : '') : '';
+  const missedTag = (n) => n ? `<span class="tag term">Misses ${n} school day${n > 1 ? 's' : ''}</span>` : '';
+
+  const legRow = (l, dir) => {
+    const r = l.r, c = l.c;
+    const was = r[F.prevCheapest];
+    const drop = opts.fareType === 'cheapest' && was != null && was !== c.fare
+      ? `<span class="tag ${c.fare < was ? 'drop' : 'rise'}">${c.fare < was ? 'Down' : 'Up'} ${gbp(Math.abs(c.fare - was))}</span>` : '';
+    return `<li>
+      <span><span class="when">${nice(r[F.depDate])} ${r[F.depTime]}</span>
+      <span class="sub">arrives ${r[F.arrDate] !== r[F.depDate] ? nice(r[F.arrDate]) + ' ' : ''}${r[F.arrTime]}, ${r[F.ship] || ''}${c.cabin ? ', incl. cabin ' + gbp(c.cabin) : ''}</span>
+      ${missedTag(l.missed)}${drop}${isNew(r) ? '<span class="tag new">Newly released</span>' : ''}</span>
+      <span class="p">${gbp(c.total)}</span></li>`;
+  };
+
+  function renderLegs(outRows, backRows, logicOpts) {
+    const outs = L.cheapestLegs(outRows, cal, logicOpts, 'out', 3);
+    const backs = L.cheapestLegs(backRows, cal, logicOpts, 'back', 3);
+    let groups = [...new Set([...outs.keys(), ...backs.keys()])]
+      .map((k) => ({ name: k, start: (outs.get(k) || backs.get(k)).start, out: outs.get(k)?.list || [], back: backs.get(k)?.list || [] }))
+      .sort((a, b) => a.start - b.start);
+    if (focusDay) groups = groups.map((g) => ({ ...g, out: g.out.filter((l) => l.r[F.depDate] === focusDay) })).filter((g) => g.out.length);
+    const res = $('results');
+    if (!groups.length) {
+      res.innerHTML = `<div class="empty"><h2>Nothing matches</h2><p>No sailings fit${opts.schoolHolidaysOnly ? ' the school holidays' : ''} with these settings. Try the Cheapest fare${opts.schoolHolidaysOnly ? ', or switch off "School holidays only"' : ''}.</p></div>`;
+      return;
+    }
+    const col = (label, route, list) => `<div class="legcol"><h3>${label} <span>${routeName(route)}</span></h3>
+      ${list.length ? `<ol class="legs-list">${list.map((l) => legRow(l, label === 'Out' ? 'out' : 'back')).join('')}</ol>` : '<p class="none-yet">No sailings in this holiday yet.</p>'}</div>`;
+    res.innerHTML = groups.map((g) => {
+      const w = cal.windows.find((x) => x.name === g.name);
+      return `<section class="window">
+        <h2>${g.name}</h2>
+        <div class="dates">${windowDates(w)}</div>
+        <div class="legcols">${col('Out', opts.outRoute, g.out)}${col('Back', opts.backRoute, g.back)}</div>
+      </section>`;
+    }).join('');
+  }
+
   function render() {
+    rebuildCal();
     const logicOpts = { nightsMin: opts.nightsMin, nightsMax: opts.nightsMax, fareType: opts.fareType,
       cabinMode: opts.cabins ? 'nights' : 'required', schoolHolidaysOnly: opts.schoolHolidaysOnly,
       leaveAfterSchool: opts.leaveAfterSchool, afterSchoolTime: opts.afterSchoolTime };
     const outRows = data.sailings[opts.outRoute] || [], backRows = data.sailings[opts.backRoute] || [];
     renderStrip(outRows, logicOpts);
 
+    if (opts.view === 'legs') { renderLegs(outRows, backRows, logicOpts); return; }
     let trips = L.buildTrips(outRows, backRows, cal, logicOpts);
     if (focusDay) trips = trips.filter((t) => t.out[F.depDate] === focusDay);
     const res = $('results');
@@ -327,13 +399,13 @@
       const [best, ...rest] = g.list;
       return `<section class="window">
         <h2>${g.name}</h2>
-        <div class="dates">${w ? dLong.format(new Date(w.start * 864e5)) + ' to ' + dLong.format(new Date(w.end * 864e5)) : ''}</div>
+        <div class="dates">${windowDates(w)}</div>
         <article class="best">
           <div class="legs">${legHtml('Out', best.out, best.outCost)}${legHtml('Back', best.back, best.backCost)}</div>
           <div class="price">${gbp(best.total)}<small>${best.nights} night${best.nights > 1 ? 's' : ''}, return</small></div>
-          <div class="tags"><span class="tag">Out ${gbp(best.outCost.total)}, back ${gbp(best.backCost.total)}</span>${changeTag(best)}${newTag(best)}</div>
+          <div class="tags"><span class="tag">Out ${gbp(best.outCost.total)}, back ${gbp(best.backCost.total)}</span>${missedTag(L.schoolDaysMissed(cal, best.out[F.depDate], best.out[F.depTime], best.back[F.arrDate], opts.afterSchoolTime, true))}${changeTag(best)}${newTag(best)}</div>
         </article>
-        ${rest.length ? `<ul class="more">${rest.map((t) => `<li><span>${nice(t.out[F.depDate])} ${t.out[F.depTime]} to ${nice(t.back[F.depDate])} ${t.back[F.depTime]}, ${t.nights} night${t.nights > 1 ? 's' : ''} ${newTag(t)}</span><span class="p">${gbp(t.total)}</span></li>`).join('')}</ul>` : ''}
+        ${rest.length ? `<ul class="more">${rest.map((t) => `<li><span>${nice(t.out[F.depDate])} ${t.out[F.depTime]} to ${nice(t.back[F.depDate])} ${t.back[F.depTime]}, ${t.nights} night${t.nights > 1 ? 's' : ''} ${missedTag(L.schoolDaysMissed(cal, t.out[F.depDate], t.out[F.depTime], t.back[F.arrDate], opts.afterSchoolTime, true))}${newTag(t)}</span><span class="p">${gbp(t.total)}</span></li>`).join('')}</ul>` : ''}
       </section>`;
     }).join('');
   }

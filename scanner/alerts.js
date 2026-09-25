@@ -18,7 +18,7 @@ const cfg = JSON.parse(fs.readFileSync(path.join(root, 'scanner/alerts.json'), '
 const terms = JSON.parse(fs.readFileSync(path.join(root, 'site/data/terms.json'), 'utf8'));
 const bhPath = path.join(root, 'site/data/bank-holidays.json');
 const banks = fs.existsSync(bhPath) ? JSON.parse(fs.readFileSync(bhPath, 'utf8')) : [];
-const cal = L.buildCalendar(terms, banks);
+const cal = L.buildCalendar(terms, banks, cfg.bufferDays || 0);
 
 const [prevPath, newPath] = process.argv.slice(2);
 const load = (p) => (p && fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null);

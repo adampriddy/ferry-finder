@@ -1,5 +1,6 @@
 {
   "minDrop": 15,
+  "bufferDays": 2,
   "newSailings": {
     "enabled": true,
     "routes": []
