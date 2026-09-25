@@ -3,9 +3,28 @@
     "adults": 2,
     "children": 2,
     "infants": 0,
-    "vehicle": { "type": "CAR", "height_cm": 183, "length_cm": 500 }
+    "vehicle": {
+      "type": "CAR",
+      "height_cm": 183,
+      "length_cm": 500
+    }
   },
   "horizon_days": 400,
   "delay_seconds": 2.0,
-  "routes": []
+  "routes": [
+    "GBPLY-FRROS",
+    "GBPLY-FRSML",
+    "GBPME-FROUI",
+    "GBPME-FRSML",
+    "GBPME-FRCER",
+    "GBPOO-FRCER"
+  ],
+  "extra_routes": [
+    {
+      "from": "GBPLY",
+      "to": "FRSML",
+      "fromName": "Plymouth",
+      "toName": "St Malo"
+    }
+  ]
 }

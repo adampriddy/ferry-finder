@@ -81,6 +81,12 @@ def get_routes():
                 "fromCode": dep["code"], "toCode": arr["code"],
                 "fromCountry": dep["country"], "toCountry": arr["country"],
             }
+    # Occasional routes (e.g. Plymouth-St Malo) aren't always in the route list; add them both ways.
+    for x in CONFIG.get("extra_routes", []):
+        for a, b, an, bn, ac, bc in ((x["from"], x["to"], x["fromName"], x["toName"], "GBR", x.get("country", "FRA")),
+                                     (x["to"], x["from"], x["toName"], x["fromName"], x.get("country", "FRA"), "GBR")):
+            routes.setdefault(f"{a}-{b}", {"id": f"{a}-{b}", "from": an, "to": bn, "fromCode": a, "toCode": b,
+                                           "fromCountry": ac, "toCountry": bc})
     return routes
 
 
