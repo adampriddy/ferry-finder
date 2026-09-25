@@ -64,7 +64,7 @@
   .months span { position: absolute; white-space: nowrap; }
 
   /* ---- Controls ---- */
-  .controls { background: var(--white); border-bottom: 1px solid var(--line); padding: 14px 20px; position: sticky; top: 0; z-index: 5; }
+  .controls { background: var(--white); border-bottom: 1px solid var(--line); padding: 14px 20px; }
   .controls .wrap { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; }
   .ctl { display: flex; align-items: center; gap: 8px; font-size: 15px; }
   .ctl-name { color: var(--slate); }
@@ -74,6 +74,11 @@
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .seg button { border: 0; background: none; padding: 6px 11px; cursor: pointer; font-size: 14px; white-space: nowrap; }
   .seg button[aria-pressed="true"] { background: var(--ink); color: var(--white); }
+  .hols { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; flex-basis: 100%; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 99px; padding: 4px 11px 4px 8px; font-size: 14px; cursor: pointer; background: var(--white); }
+  .chip:has(input:checked) { background: var(--buoy); border-color: var(--buoy); font-weight: 600; }
+  .chip input { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); }
+  .linkbtn { border: 0; background: none; color: var(--ink); text-decoration: underline; cursor: pointer; font-size: 14px; padding: 4px; }
   .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; }
   .toggle input { width: 18px; height: 18px; accent-color: var(--ink); }
 
@@ -173,6 +178,7 @@
     <div class="ctl" id="bufferCtl"><span class="ctl-name">Extra school days either side</span>
       <span class="stepper"><button data-step="buffer:-1" aria-label="Fewer extra days">−</button><output id="buffer"></output><button data-step="buffer:1" aria-label="More extra days">+</button></span>
     </div>
+    <div class="hols" id="holsCtl" role="group" aria-label="Which school holidays to show"></div>
   </div>
 </section>
 
@@ -192,7 +198,7 @@
   // Remember choices on this device.
   const saved = (() => { try { return JSON.parse(localStorage.getItem('ferry-opts') || '{}'); } catch { return {}; } })();
   const opts = Object.assign({ outRoute: 'GBPLY-FRROS', backRoute: 'FRROS-GBPLY', same: true, nightsMin: 3, nightsMax: 7,
-    fareType: 'cheapest', view: 'legs', buffer: 2, cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
+    fareType: 'cheapest', view: 'legs', buffer: 2, hiddenHols: [], cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
   const save = () => { try { localStorage.setItem('ferry-opts', JSON.stringify(opts)); } catch {} };
 
   let data, terms, banks;
@@ -257,6 +263,32 @@
   $('afterSchool').onchange = (e) => change(() => { opts.leaveAfterSchool = e.target.checked; });
 
   let focusDay = null;
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const lastSailing = Object.values(data.sailings).flat().reduce((m, r) => (r[F.depDate] > m ? r[F.depDate] : m), todayIso);
+  const baseHolidayNames = (terms.holidays || []).filter((h) => h.end >= todayIso && h.start <= lastSailing).map((h) => h.name);
+  const WEEKENDS = 'Weekends and bank holidays';
+  // The return-trips view also groups ordinary weekends, so it gets its own tick box there.
+  let holidayNames = baseHolidayNames;
+  const shortName = (n) => n === WEEKENDS ? 'Weekends' : n.replace('half-term', 'HT').replace(/ (\d{4})$/, " '$1").replace(/'(\d\d)(\d\d)$/, "'$2");
+  const isShown = (name) => !opts.hiddenHols.includes(name);
+
+  function renderHolChips() {
+    holidayNames = opts.view === 'trips' ? [...baseHolidayNames, WEEKENDS] : baseHolidayNames;
+    const box = $('holsCtl');
+    box.hidden = !opts.schoolHolidaysOnly || !holidayNames.length;
+    const allOn = holidayNames.every(isShown);
+    box.innerHTML = `<span class="ctl-name">Holidays</span>` + holidayNames.map((n) =>
+      `<label class="chip"><input type="checkbox" data-hol="${n}" ${isShown(n) ? 'checked' : ''}> ${shortName(n)}</label>`).join('') +
+      `<button class="linkbtn" data-hols="${allOn ? 'none' : 'all'}">${allOn ? 'Untick all' : 'Tick all'}</button>`;
+    box.querySelectorAll('[data-hol]').forEach((c) => c.onchange = () => change(() => {
+      const n = c.dataset.hol;
+      opts.hiddenHols = c.checked ? opts.hiddenHols.filter((x) => x !== n) : [...opts.hiddenHols, n];
+    }));
+    box.querySelector('[data-hols]').onclick = (e) => change(() => {
+      opts.hiddenHols = e.target.dataset.hols === 'none' ? [...holidayNames] : [];
+    });
+  }
 
   function renderStrip(rows, logicOpts) {
     const daily = L.dailyCheapest(rows, logicOpts.fareType, logicOpts.cabinMode);
@@ -360,9 +392,13 @@
     let groups = [...new Set([...outs.keys(), ...backs.keys()])]
       .map((k) => ({ name: k, start: (outs.get(k) || backs.get(k)).start, out: outs.get(k)?.list || [], back: backs.get(k)?.list || [] }))
       .sort((a, b) => a.start - b.start);
+    if (opts.schoolHolidaysOnly) groups = groups.filter((g) => isShown(g.name));
     if (focusDay) groups = groups.map((g) => ({ ...g, out: g.out.filter((l) => l.r[F.depDate] === focusDay) })).filter((g) => g.out.length);
     const res = $('results');
     if (!groups.length) {
+      if (opts.schoolHolidaysOnly && holidayNames.length && holidayNames.every((n) => !isShown(n))) {
+        res.innerHTML = `<div class="empty"><h2>No holidays ticked</h2><p>Tick at least one holiday above to see sailings.</p></div>`; return;
+      }
       res.innerHTML = `<div class="empty"><h2>Nothing matches</h2><p>No sailings fit${opts.schoolHolidaysOnly ? ' the school holidays' : ''} with these settings. Try the Cheapest fare${opts.schoolHolidaysOnly ? ', or switch off "School holidays only"' : ''}.</p></div>`;
       return;
     }
@@ -380,6 +416,7 @@
 
   function render() {
     rebuildCal();
+    renderHolChips();
     const logicOpts = { nightsMin: opts.nightsMin, nightsMax: opts.nightsMax, fareType: opts.fareType,
       cabinMode: opts.cabins ? 'nights' : 'required', schoolHolidaysOnly: opts.schoolHolidaysOnly,
       leaveAfterSchool: opts.leaveAfterSchool, afterSchoolTime: opts.afterSchoolTime };
@@ -388,8 +425,12 @@
 
     if (opts.view === 'legs') { renderLegs(outRows, backRows, logicOpts); return; }
     let trips = L.buildTrips(outRows, backRows, cal, logicOpts);
+    if (opts.schoolHolidaysOnly) trips = trips.filter((t) => isShown(t.window));
     if (focusDay) trips = trips.filter((t) => t.out[F.depDate] === focusDay);
     const res = $('results');
+    if (!trips.length && opts.schoolHolidaysOnly && holidayNames.length && holidayNames.every((n) => !isShown(n))) {
+      $('results').innerHTML = `<div class="empty"><h2>No holidays ticked</h2><p>Tick at least one holiday above to see trips.</p></div>`; return;
+    }
     if (!trips.length) {
       res.innerHTML = `<div class="empty"><h2>No trips match</h2><p>${!backRows.length ? 'There are no return sailings on ' + routeName(opts.backRoute) + ' yet.' :
         'Try a wider range of nights' + (opts.schoolHolidaysOnly ? ', or switch off "School holidays only"' : '') + (opts.fareType !== 'cheapest' ? ', or choose the Cheapest fare' : '') + '.'}</p></div>`;
