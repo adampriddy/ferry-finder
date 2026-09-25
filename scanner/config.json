@@ -1,0 +1,11 @@
+{
+  "party": {
+    "adults": 2,
+    "children": 2,
+    "infants": 0,
+    "vehicle": { "type": "CAR", "height_cm": 183, "length_cm": 500 }
+  },
+  "horizon_days": 400,
+  "delay_seconds": 2.0,
+  "routes": []
+}

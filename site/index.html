@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Holiday crossings</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛴️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #123b4a;       /* channel ink */
+    --ink-2: #1c5063;
+    --mist: #eef3f1;      /* chart paper */
+    --buoy: #f4c542;      /* cheapest */
+    --harbour: #b8432f;   /* school days */
+    --slate: #5b6b73;
+    --line: #d5dfdc;
+    --white: #fff;
+    --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+    --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    color-scheme: light;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { margin: 0; background: var(--mist); color: var(--ink); font: 400 16px/1.5 var(--body); }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--buoy); outline-offset: 2px; }
+
+  /* ---- Signage band: the one loud thing ---- */
+  .band { background: var(--ink); color: var(--white); padding: 20px 20px 16px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; color: #b9ccd2; margin-bottom: 14px; }
+  .routes { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; align-items: baseline; }
+  .routes label { font: 600 15px/1 var(--display); color: var(--buoy); letter-spacing: .02em; }
+  .routes select {
+    appearance: none; background: transparent; border: 0; border-bottom: 2px solid transparent;
+    color: var(--white); font: 700 clamp(30px, 6.5vw, 58px)/1.08 var(--display);
+    padding: 0 28px 0 0; max-width: 100%; justify-self: start; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--buoy) 50%), linear-gradient(135deg, var(--buoy) 50%, transparent 50%);
+    background-position: right 8px center, right 0 center; background-size: 8px 8px; background-repeat: no-repeat;
+  }
+  .routes select:hover { border-bottom-color: var(--ink-2); }
+  .routes select option { color: var(--ink); font-size: 16px; }
+  .routes select:disabled { opacity: .55; cursor: default; background-image: none; }
+  .same { font-size: 14px; color: #b9ccd2; display: flex; gap: 8px; align-items: center; margin: 6px 0 0; grid-column: 2; }
+
+  /* Season strip */
+  .strip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 22px 0 6px; font-size: 14px; color: #b9ccd2; }
+  .strip-readout { color: var(--white); font-weight: 500; min-height: 1.5em; text-align: right; }
+  .strip { overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; }
+  .strip-inner { position: relative; height: 96px; display: flex; align-items: flex-end; gap: 1px; min-width: 100%; }
+  .bar { flex: 0 0 5px; background: #3b6b7b; border-radius: 2px 2px 0 0; cursor: pointer; position: relative; z-index: 1; }
+  .bar.none { background: #2a5566; cursor: default; }
+  .gap { position: absolute; bottom: 10px; text-align: center; font-size: 13px; color: #8fa9b1; pointer-events: none; }
+  .bar.hol { background: var(--buoy); }
+  .bar.sel { outline: 2px solid var(--white); }
+  .holband { position: absolute; bottom: -6px; height: 4px; background: var(--buoy); border-radius: 2px; }
+  .months { display: flex; gap: 1px; font-size: 12px; color: #8fa9b1; height: 18px; margin-top: 8px; position: relative; }
+  .months span { position: absolute; white-space: nowrap; }
+
+  /* ---- Controls ---- */
+  .controls { background: var(--white); border-bottom: 1px solid var(--line); padding: 14px 20px; position: sticky; top: 0; z-index: 5; }
+  .controls .wrap { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; }
+  .ctl { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+  .ctl-name { color: var(--slate); }
+  .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; }
+  .stepper button { width: 34px; height: 34px; border: 0; background: none; cursor: pointer; font-size: 18px; }
+  .stepper output { min-width: 26px; text-align: center; font: 600 18px var(--display); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: none; padding: 6px 11px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--white); }
+  .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; }
+  .toggle input { width: 18px; height: 18px; accent-color: var(--ink); }
+
+  /* ---- Results ---- */
+  main { padding: 8px 20px 60px; }
+  .window { padding: 26px 0 8px; border-bottom: 1px solid var(--line); }
+  .window h2 { font: 700 28px/1.1 var(--display); margin: 0; }
+  .window .dates { color: var(--slate); font-size: 14px; margin: 2px 0 12px; }
+  .best { background: var(--white); border-radius: 12px; padding: 16px 18px; display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; border-left: 6px solid var(--buoy); }
+  .price { font: 700 40px/1 var(--display); text-align: right; }
+  .price small { display: block; font: 400 13px/1.4 var(--body); color: var(--slate); }
+  .legs { display: grid; gap: 4px; }
+  .leg { display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; }
+  .leg b { font: 600 20px var(--display); min-width: 3.2em; }
+  .leg .when { font-weight: 500; }
+  .leg .sub { color: var(--slate); font-size: 14px; }
+  .tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+  .tag { padding: 2px 8px; border-radius: 99px; background: var(--mist); }
+  .tag.drop { background: #e4f1e4; color: #255c2c; }
+  .tag.rise { background: #f8e5e1; color: var(--harbour); }
+  .tag.new { background: var(--buoy); color: var(--ink); font-weight: 600; }
+  .more .tag { font-size: 12px; margin-left: 6px; }
+  .more { list-style: none; margin: 8px 0 0; padding: 0; }
+  .more li { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 10px 4px; border-top: 1px solid var(--line); font-size: 15px; }
+  .more li:first-child { border-top: 0; }
+  .more .p { font: 600 20px var(--display); }
+  .empty { background: var(--white); border-radius: 12px; padding: 22px; margin-top: 26px; }
+  .empty h2 { font: 700 26px var(--display); margin: 0 0 6px; }
+  footer { color: var(--slate); font-size: 13px; padding: 0 20px 40px; }
+  footer a { color: var(--ink); }
+
+  @media (max-width: 640px) {
+    .best { grid-template-columns: 1fr; }
+    .price { text-align: left; }
+    .controls { position: static; }
+    .seg button { padding: 6px 8px; font-size: 13px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+
+<section class="band">
+  <div class="wrap">
+    <div class="meta" id="meta">Loading fares…</div>
+    <div class="routes">
+      <label for="outRoute">Out</label>
+      <select id="outRoute" aria-label="Outbound crossing"></select>
+      <label for="backRoute">Back</label>
+      <select id="backRoute" aria-label="Return crossing"></select>
+      <label class="same"><input type="checkbox" id="sameRoute" checked> Return on the same crossing</label>
+    </div>
+
+    <div class="strip-head">
+      <span>Cheapest way out each day, one way. Yellow is school holidays.</span>
+      <span class="strip-readout" id="readout" aria-live="polite"></span>
+    </div>
+    <div class="strip" id="strip"><div class="strip-inner" id="stripInner"></div><div class="months" id="months"></div></div>
+  </div>
+</section>
+
+<section class="controls" aria-label="Trip options">
+  <div class="wrap">
+    <div class="ctl"><span class="ctl-name">Nights</span>
+      <span class="stepper"><button data-step="nightsMin:-1" aria-label="Fewer minimum nights">−</button><output id="nightsMin"></output><button data-step="nightsMin:1" aria-label="More minimum nights">+</button></span>
+      <span class="ctl-name">to</span>
+      <span class="stepper"><button data-step="nightsMax:-1" aria-label="Fewer maximum nights">−</button><output id="nightsMax"></output><button data-step="nightsMax:1" aria-label="More maximum nights">+</button></span>
+    </div>
+    <div class="ctl"><span class="ctl-name">Fare</span>
+      <span class="seg" id="fareSeg" role="group" aria-label="Fare type">
+        <button data-fare="cheapest">Cheapest</button><button data-fare="earlyBird">Early Bird</button><button data-fare="standard">Standard</button><button data-fare="flexi">Flexi</button>
+      </span>
+    </div>
+    <label class="toggle"><input type="checkbox" id="cabins"> Add a cabin on night sailings</label>
+    <label class="toggle"><input type="checkbox" id="schoolOnly" checked> School holidays only</label>
+    <label class="toggle"><input type="checkbox" id="afterSchool" checked> Can leave after school</label>
+  </div>
+</section>
+
+<main><div class="wrap" id="results"></div></main>
+<footer><div class="wrap" id="foot"></div></footer>
+
+<script src="app.js"></script>
+<script>
+(async function () {
+  const L = window.FerryLogic, F = L.F;
+  const $ = (id) => document.getElementById(id);
+  const gbp = (n) => '£' + Math.round(n).toLocaleString('en-GB');
+  const dFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const dLong = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const nice = (iso) => dFmt.format(new Date(iso + 'T00:00:00Z'));
+
+  // Remember choices on this device.
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('ferry-opts') || '{}'); } catch { return {}; } })();
+  const opts = Object.assign({ outRoute: 'GBPLY-FRROS', backRoute: 'FRROS-GBPLY', same: true, nightsMin: 3, nightsMax: 7,
+    fareType: 'cheapest', cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
+  const save = () => { try { localStorage.setItem('ferry-opts', JSON.stringify(opts)); } catch {} };
+
+  let data, terms, banks;
+  try {
+    [data, terms, banks] = await Promise.all(['data/latest.json', 'data/terms.json', 'data/bank-holidays.json']
+      .map((u) => fetch(u, { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); })));
+  } catch (e) {
+    $('meta').textContent = '';
+    $('results').innerHTML = `<div class="empty"><h2>No fares yet</h2><p>The page couldn't load its data (${e.message}). Run the scanner once from the Actions tab, then refresh.</p></div>`;
+    return;
+  }
+  const cal = L.buildCalendar(terms, banks);
+  const routes = new Map(data.routes.map((r) => [r.id, r]));
+  const routeName = (id) => { const r = routes.get(id); return r ? `${r.from} to ${r.to}` : id; };
+  const available = Object.keys(data.sailings).filter((k) => data.sailings[k].length);
+
+  // Meta line
+  const p = data.party;
+  const scanned = new Date(data.generated);
+  $('meta').innerHTML = `<span>Fares for ${p.adults} adults, ${p.children} children${p.infants ? ', ' + p.infants + ' infants' : ''} and a car</span>
+    <span>Checked ${scanned.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at ${scanned.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>`;
+
+  // Route selectors: grouped UK→ and →UK
+  const fill = (sel, homeFirst) => {
+    const ids = available.filter((id) => (routes.get(id)?.fromCountry === 'GBR') === homeFirst)
+      .sort((a, b) => routeName(a).localeCompare(routeName(b)));
+    sel.innerHTML = ids.map((id) => `<option value="${id}">${routeName(id)}</option>`).join('');
+  };
+  fill($('outRoute'), true); fill($('backRoute'), false);
+  const reverse = (id) => id.split('-').reverse().join('-');
+  if (!available.includes(opts.outRoute)) opts.outRoute = $('outRoute').options[0]?.value;
+  if (opts.same || !available.includes(opts.backRoute)) opts.backRoute = reverse(opts.outRoute);
+
+  // Controls wiring
+  const syncControls = () => {
+    $('outRoute').value = opts.outRoute; $('backRoute').value = opts.backRoute;
+    $('backRoute').disabled = opts.same; $('sameRoute').checked = opts.same;
+    $('nightsMin').textContent = opts.nightsMin; $('nightsMax').textContent = opts.nightsMax;
+    document.querySelectorAll('[data-fare]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.fare === opts.fareType));
+    $('cabins').checked = opts.cabins; $('schoolOnly').checked = opts.schoolHolidaysOnly;
+    $('afterSchool').checked = opts.leaveAfterSchool; $('afterSchool').disabled = !opts.schoolHolidaysOnly;
+  };
+  const change = (fn) => { fn(); save(); syncControls(); render(); };
+  $('outRoute').onchange = (e) => change(() => { opts.outRoute = e.target.value; if (opts.same) opts.backRoute = reverse(opts.outRoute); });
+  $('backRoute').onchange = (e) => change(() => { opts.backRoute = e.target.value; });
+  $('sameRoute').onchange = (e) => change(() => { opts.same = e.target.checked; if (opts.same) opts.backRoute = reverse(opts.outRoute); });
+  document.querySelectorAll('[data-step]').forEach((b) => b.onclick = () => change(() => {
+    const [k, d] = b.dataset.step.split(':'); opts[k] = Math.max(1, Math.min(28, opts[k] + +d));
+    if (opts.nightsMin > opts.nightsMax) { if (k === 'nightsMin') opts.nightsMax = opts.nightsMin; else opts.nightsMin = opts.nightsMax; }
+  }));
+  document.querySelectorAll('[data-fare]').forEach((b) => b.onclick = () => change(() => { opts.fareType = b.dataset.fare; }));
+  $('cabins').onchange = (e) => change(() => { opts.cabins = e.target.checked; });
+  $('schoolOnly').onchange = (e) => change(() => { opts.schoolHolidaysOnly = e.target.checked; });
+  $('afterSchool').onchange = (e) => change(() => { opts.leaveAfterSchool = e.target.checked; });
+
+  let focusDay = null;
+
+  function renderStrip(rows, logicOpts) {
+    const daily = L.dailyCheapest(rows, logicOpts.fareType, logicOpts.cabinMode);
+    const days = [...daily.keys()].sort();
+    const inner = $('stripInner'), months = $('months');
+    inner.innerHTML = ''; months.innerHTML = '';
+    if (!days.length) { $('readout').textContent = 'No sailings on this crossing.'; return; }
+    const first = L.toDay(days[0]), last = L.toDay(days[days.length - 1]);
+    const vals = [...daily.values()], max = Math.max(...vals), min = Math.min(...vals);
+    const W = 6; // 5px bar + 1px gap
+    const frag = document.createDocumentFragment();
+    for (let d = first; d <= last; d++) {
+      const iso = L.fromDay(d), v = daily.get(iso);
+      const b = document.createElement('div');
+      b.className = 'bar' + (v == null ? ' none' : (cal.windowFor(d) ? ' hol' : '')) + (focusDay === iso ? ' sel' : '');
+      b.style.height = v == null ? '2px' : (18 + 78 * (v - min) / Math.max(1, max - min)) + 'px';
+      b.dataset.day = iso;
+      if (v != null) b.title = `${nice(iso)}: ${gbp(v)}`;
+      frag.appendChild(b);
+      if (iso.endsWith('-01') || (d === first && +iso.slice(8) < 20)) {
+        const m = document.createElement('span');
+        m.style.left = ((d - first) * W) + 'px';
+        m.textContent = new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+        months.appendChild(m);
+      }
+    }
+    inner.appendChild(frag);
+    cal.windows.forEach((w) => {
+      if (w.end < first || w.start > last) return;
+      const s = Math.max(w.start, first), e = Math.min(w.end, last);
+      const band = document.createElement('div');
+      band.className = 'holband'; band.style.left = ((s - first) * W) + 'px'; band.style.width = ((e - s + 1) * W - 1) + 'px';
+      inner.appendChild(band);
+    });
+    let gapStart = null;
+    for (let d = first; d <= last + 1; d++) {
+      const has = d <= last && daily.has(L.fromDay(d));
+      if (!has && gapStart === null) gapStart = d;
+      if (has && gapStart !== null) {
+        if (d - gapStart >= 21) {
+          const g = document.createElement('div');
+          g.className = 'gap'; g.style.left = ((gapStart - first) * W) + 'px'; g.style.width = ((d - gapStart) * W) + 'px';
+          g.textContent = 'No sailings';
+          inner.appendChild(g);
+        }
+        gapStart = null;
+      }
+    }
+    inner.style.width = ((last - first + 1) * W) + 'px';
+    const cheapestDay = days.reduce((a, b) => (daily.get(b) < daily.get(a) ? b : a));
+    $('readout').textContent = focusDay
+      ? `Showing trips leaving ${nice(focusDay)}. Tap again to clear.`
+      : `Lowest: ${gbp(daily.get(cheapestDay))} on ${nice(cheapestDay)}`;
+  }
+  $('stripInner').addEventListener('click', (e) => {
+    const day = e.target.dataset && e.target.dataset.day;
+    if (!day || e.target.classList.contains('none')) return;
+    focusDay = focusDay === day ? null : day; render();
+  });
+  $('stripInner').addEventListener('mouseover', (e) => {
+    if (!focusDay && e.target.title) $('readout').textContent = e.target.title + ' one way';
+  });
+
+  const legHtml = (label, row, cost) => `
+    <div class="leg"><b>${label}</b><span class="when">${nice(row[F.depDate])} ${row[F.depTime]}</span>
+    <span class="sub">arrives ${row[F.arrDate] !== row[F.depDate] ? nice(row[F.arrDate]) + ' ' : ''}${row[F.arrTime]}, ${row[F.ship] || ''}${cost.cabin ? ', cabin ' + gbp(cost.cabin) : ''}</span></div>`;
+
+  function changeTag(t) {
+    const was = ['out', 'back'].map((k) => t[k][F.prevCheapest]).filter((x) => x != null);
+    if (!was.length || opts.fareType !== 'cheapest') return '';
+    let diff = 0;
+    for (const k of ['out', 'back']) { const r = t[k]; if (r[F.prevCheapest] != null) diff += t[k + 'Cost'].fare - r[F.prevCheapest]; }
+    if (!diff) return '';
+    return diff < 0 ? `<span class="tag drop">Down ${gbp(-diff)} since last change</span>` : `<span class="tag rise">Up ${gbp(diff)} since last change</span>`;
+  }
+
+  // A sailing is "new" if it appeared in the last 7 days, after the very first scan.
+  const newCutoff = L.fromDay(L.toDay(data.generated.slice(0, 10)) - 7);
+  const isNew = (row) => row[F.firstSeen] && data.baseline && row[F.firstSeen] > data.baseline && row[F.firstSeen] >= newCutoff;
+  const newTag = (t) => (isNew(t.out) || isNew(t.back)) ? `<span class="tag new">Newly released</span>` : '';
+
+  function render() {
+    const logicOpts = { nightsMin: opts.nightsMin, nightsMax: opts.nightsMax, fareType: opts.fareType,
+      cabinMode: opts.cabins ? 'nights' : 'required', schoolHolidaysOnly: opts.schoolHolidaysOnly,
+      leaveAfterSchool: opts.leaveAfterSchool, afterSchoolTime: opts.afterSchoolTime };
+    const outRows = data.sailings[opts.outRoute] || [], backRows = data.sailings[opts.backRoute] || [];
+    renderStrip(outRows, logicOpts);
+
+    let trips = L.buildTrips(outRows, backRows, cal, logicOpts);
+    if (focusDay) trips = trips.filter((t) => t.out[F.depDate] === focusDay);
+    const res = $('results');
+    if (!trips.length) {
+      res.innerHTML = `<div class="empty"><h2>No trips match</h2><p>${!backRows.length ? 'There are no return sailings on ' + routeName(opts.backRoute) + ' yet.' :
+        'Try a wider range of nights' + (opts.schoolHolidaysOnly ? ', or switch off "School holidays only"' : '') + (opts.fareType !== 'cheapest' ? ', or choose the Cheapest fare' : '') + '.'}</p></div>`;
+      return;
+    }
+    const groups = focusDay ? [{ name: 'Leaving ' + nice(focusDay), list: trips.slice(0, 6) }] : L.groupByWindow(trips, cal, 5);
+    res.innerHTML = groups.map((g) => {
+      const w = cal.windows.find((x) => x.name === g.name);
+      const [best, ...rest] = g.list;
+      return `<section class="window">
+        <h2>${g.name}</h2>
+        <div class="dates">${w ? dLong.format(new Date(w.start * 864e5)) + ' to ' + dLong.format(new Date(w.end * 864e5)) : ''}</div>
+        <article class="best">
+          <div class="legs">${legHtml('Out', best.out, best.outCost)}${legHtml('Back', best.back, best.backCost)}</div>
+          <div class="price">${gbp(best.total)}<small>${best.nights} night${best.nights > 1 ? 's' : ''}, return</small></div>
+          <div class="tags"><span class="tag">Out ${gbp(best.outCost.total)}, back ${gbp(best.backCost.total)}</span>${changeTag(best)}${newTag(best)}</div>
+        </article>
+        ${rest.length ? `<ul class="more">${rest.map((t) => `<li><span>${nice(t.out[F.depDate])} ${t.out[F.depTime]} to ${nice(t.back[F.depDate])} ${t.back[F.depTime]}, ${t.nights} night${t.nights > 1 ? 's' : ''} ${newTag(t)}</span><span class="p">${gbp(t.total)}</span></li>`).join('')}</ul>` : ''}
+      </section>`;
+    }).join('');
+  }
+
+  $('foot').innerHTML = `Prices are what Brittany Ferries showed for this party when last checked, and can change at any time. Check and book on <a href="https://www.brittany-ferries.co.uk" rel="noopener">brittany-ferries.co.uk</a>. Term dates: ${terms.source}`;
+  syncControls();
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+name: Scan ferry fares
+
+on:
+  schedule:
+    - cron: "20 3 * * *"      # daily, early morning UK time
+  workflow_dispatch: {}        # lets cron-job.org (or you) trigger it on demand
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ferry-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pip install -r scanner/requirements.txt
+      - name: Keep yesterday's fares for comparison
+        run: cp site/data/latest.json /tmp/prev.json 2>/dev/null || true
+      - run: python scanner/scan.py
+      - name: Send price-drop alerts
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          ALERT_FROM: ${{ secrets.ALERT_FROM }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: node scanner/alerts.js /tmp/prev.json site/data/latest.json
+      - name: Commit new data
+        run: |
+          git config user.name "ferry-scanner"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/data
+          git diff --cached --quiet || git commit -m "Fares $(date -u +%F)"
+          git push
