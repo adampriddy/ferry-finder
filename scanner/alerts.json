@@ -7,9 +7,64 @@
   },
   "watches": [
     {
-      "name": "Plymouth-Roscoff return",
+      "name": "Plymouth-Roscoff",
       "out": "GBPLY-FRROS",
       "back": "FRROS-GBPLY",
+      "nightsMin": 3,
+      "nightsMax": 7,
+      "fareType": "cheapest",
+      "cabins": false,
+      "leaveAfterSchool": true,
+      "target": null
+    },
+    {
+      "name": "Plymouth-St Malo",
+      "out": "GBPLY-FRSML",
+      "back": "FRSML-GBPLY",
+      "nightsMin": 3,
+      "nightsMax": 7,
+      "fareType": "cheapest",
+      "cabins": false,
+      "leaveAfterSchool": true,
+      "target": null
+    },
+    {
+      "name": "Portsmouth-St Malo",
+      "out": "GBPME-FRSML",
+      "back": "FRSML-GBPME",
+      "nightsMin": 3,
+      "nightsMax": 7,
+      "fareType": "cheapest",
+      "cabins": false,
+      "leaveAfterSchool": true,
+      "target": null
+    },
+    {
+      "name": "Portsmouth-Caen",
+      "out": "GBPME-FROUI",
+      "back": "FROUI-GBPME",
+      "nightsMin": 3,
+      "nightsMax": 7,
+      "fareType": "cheapest",
+      "cabins": false,
+      "leaveAfterSchool": true,
+      "target": null
+    },
+    {
+      "name": "Portsmouth-Cherbourg",
+      "out": "GBPME-FRCER",
+      "back": "FRCER-GBPME",
+      "nightsMin": 3,
+      "nightsMax": 7,
+      "fareType": "cheapest",
+      "cabins": false,
+      "leaveAfterSchool": true,
+      "target": null
+    },
+    {
+      "name": "Poole-Cherbourg",
+      "out": "GBPOO-FRCER",
+      "back": "FRCER-GBPOO",
       "nightsMin": 3,
       "nightsMax": 7,
       "fareType": "cheapest",
