@@ -29,9 +29,17 @@ const gbp = (n) => '£' + Math.round(n).toLocaleString('en-GB');
 const day = (iso) => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 const today = new Date().toISOString().slice(0, 10);
 
+// "ANY" pools every crossing in that direction, as on the web page.
+function rowsFor(data, id, homeBound) {
+  if (id !== 'ANY') return (data.sailings[id] || []).map((r) => Object.assign(r, { route: id }));
+  const toUK = new Map(data.routes.map((r) => [r.id, r.toCountry === 'GBR']));
+  return Object.entries(data.sailings).filter(([k]) => toUK.get(k) === homeBound)
+    .flatMap(([k, rows]) => rows.map((r) => Object.assign(r, { route: k })));
+}
+
 function bestPerWindow(data, watch) {
   if (!data) return new Map();
-  const out = data.sailings[watch.out] || [], back = data.sailings[watch.back] || [];
+  const out = rowsFor(data, watch.out, false), back = rowsFor(data, watch.back, true);
   const trips = L.buildTrips(out, back, cal, {
     nightsMin: watch.nightsMin, nightsMax: watch.nightsMax, fareType: watch.fareType || 'cheapest',
     cabinMode: watch.cabins ? 'nights' : 'required', schoolHolidaysOnly: true,
@@ -43,18 +51,26 @@ function bestPerWindow(data, watch) {
 }
 
 const lines = [];
+const reported = new Set();
+const names = new Map((now.routes || []).map((r) => [r.id, `${r.from}-${r.to}`]));
 for (const watch of cfg.watches) {
   const before = bestPerWindow(prev, watch), after = bestPerWindow(now, watch);
+  const pooled = watch.out === 'ANY' || watch.back === 'ANY';
   for (const [win, t] of after) {
+    const tripKey = `${t.out[L.F.id]}>${t.back[L.F.id]}`;
+    if (reported.has(tripKey)) continue; // same trip already reported by another watch
     const was = before.get(win);
-    const label = `${win}: ${gbp(t.total)} return, ${t.nights} nights. Out ${day(t.out[L.F.depDate])} ${t.out[L.F.depTime]}, back ${day(t.back[L.F.depDate])} ${t.back[L.F.depTime]}`;
+    const via = (r) => (pooled ? ` (${names.get(r.route) || r.route})` : '');
+    const label = `${watch.name}, ${win}: ${gbp(t.total)} return, ${t.nights} nights. Out ${day(t.out[L.F.depDate])} ${t.out[L.F.depTime]}${via(t.out)}, back ${day(t.back[L.F.depDate])} ${t.back[L.F.depTime]}${via(t.back)}`;
+    const missed = L.schoolDaysMissed(cal, t.out[L.F.depDate], t.out[L.F.depTime], t.back[L.F.arrDate], '16:30', true);
+    const label2 = missed ? `${label}, misses ${missed} school day${missed > 1 ? 's' : ''}` : label;
+    const before_len = lines.length;
     if (was && was.total - t.total >= (cfg.minDrop || 1)) {
-      lines.push(`${label} (was ${gbp(was.total)}, down ${gbp(was.total - t.total)})`);
-    } else if (!was && prev) {
-      lines.push(`${label} (new: sailings just released)`);
+      lines.push(`${label2} (was ${gbp(was.total)}, down ${gbp(was.total - t.total)})`);
     } else if (watch.target && t.total <= watch.target && (!was || was.total > watch.target)) {
-      lines.push(`${label} (now under your ${gbp(watch.target)} target)`);
+      lines.push(`${label2} (now under your ${gbp(watch.target)} target)`);
     }
+    if (lines.length > before_len) reported.add(tripKey);
   }
 }
 
@@ -68,15 +84,12 @@ if (prev && ns.enabled !== false) {
     const seen = new Set((prev.sailings[rid] || []).map((r) => r[L.F.id]));
     const added = rows.filter((r) => !seen.has(r[L.F.id]) && r[L.F.depDate] > today);
     if (!added.length) continue;
-    const dates = added.map((r) => r[L.F.depDate]).sort();
-    const inHols = added.filter((r) => cal.windowFor(L.toDay(r[L.F.depDate])));
-    const cheapest = added.map((r) => ({ r, c: L.legCost(r, 'cheapest', 'required') })).filter((x) => x.c)
-      .sort((a, b) => a.c.total - b.c.total)[0];
-    let line = `New sailings, ${routeName.get(rid) || rid}: ${added.length} added, ${short(dates[0])}` +
-      (dates.length > 1 ? ` to ${short(dates[dates.length - 1])}` : '');
-    if (inHols.length) line += `, ${inHols.length} in school holidays`;
-    if (cheapest) line += `. Cheapest ${gbp(cheapest.c.total)} one way on ${day(cheapest.r[L.F.depDate])}`;
-    lines.push(line);
+    // Route and dates only. Short releases list each sailing; big ones give the date range.
+    const sorted = added.slice().sort((a, b) => (a[L.F.depDate] + a[L.F.depTime] < b[L.F.depDate] + b[L.F.depTime] ? -1 : 1));
+    const when = sorted.length <= 8
+      ? sorted.map((r) => `${day(r[L.F.depDate])} ${r[L.F.depTime]}`).join(', ')
+      : `${sorted.length} sailings, ${short(sorted[0][L.F.depDate])} to ${short(sorted[sorted.length - 1][L.F.depDate])}`;
+    lines.push(`New sailings, ${routeName.get(rid) || rid}: ${when}`);
   }
 }
 
