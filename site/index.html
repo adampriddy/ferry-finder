@@ -113,7 +113,10 @@
   .legs-list { list-style: none; margin: 0; padding: 0; }
   .legs-list li { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
   .legs-list li:first-child { border-top: 0; }
-  .legs-list li:first-child .p { background: var(--buoy); border-radius: 6px; padding: 0 6px; }
+  .legs-list li.cheapest .p { background: var(--buoy); border-radius: 6px; padding: 0 6px; }
+  .bestline { margin: 0 0 6px; padding: 6px 10px; background: var(--mist); border-radius: 8px; font-size: 14px; }
+  .bestline b { font: 700 18px var(--display); background: var(--buoy); padding: 0 5px; border-radius: 4px; }
+  .morebtn { display: block; width: 100%; margin: 4px 0 10px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--mist); cursor: pointer; font-weight: 600; }
   .legs-list .when { font-weight: 600; display: block; }
   .legs-list .route { display: block; font-size: 14px; font-weight: 600; color: var(--ink-2); }
   .legs-list .sub { color: var(--slate); font-size: 14px; display: block; }
@@ -163,6 +166,12 @@
         <button data-view="legs">Out and back separately</button><button data-view="trips">Return trips</button>
       </span>
     </div>
+    <label class="toggle" id="cheapCtl"><input type="checkbox" id="cheapOnly"> Cheapest 3 only</label>
+    <div class="ctl" id="orderCtl"><span class="ctl-name">Order</span>
+      <span class="seg" role="group" aria-label="Order sailings by">
+        <button data-order="date">Date</button><button data-order="price">Price</button>
+      </span>
+    </div>
     <div class="ctl" id="nightsCtl"><span class="ctl-name">Nights</span>
       <span class="stepper"><button data-step="nightsMin:-1" aria-label="Fewer minimum nights">−</button><output id="nightsMin"></output><button data-step="nightsMin:1" aria-label="More minimum nights">+</button></span>
       <span class="ctl-name">to</span>
@@ -199,7 +208,7 @@
   // Remember choices on this device.
   const saved = (() => { try { return JSON.parse(localStorage.getItem('ferry-opts') || '{}'); } catch { return {}; } })();
   const opts = Object.assign({ outRoute: 'GBPLY-FRROS', backRoute: 'FRROS-GBPLY', same: true, nightsMin: 3, nightsMax: 7,
-    fareType: 'cheapest', view: 'legs', buffer: 2, hiddenHols: [], cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
+    fareType: 'cheapest', view: 'legs', buffer: 2, hiddenHols: [], order: 'date', cheapOnly: false, cabins: false, schoolHolidaysOnly: true, leaveAfterSchool: true, afterSchoolTime: '16:30' }, saved);
   const save = () => { try { localStorage.setItem('ferry-opts', JSON.stringify(opts)); } catch {} };
 
   let data, terms, banks;
@@ -252,6 +261,9 @@
     document.querySelectorAll('[data-fare]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.fare === opts.fareType));
     document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === opts.view));
     $('nightsCtl').hidden = opts.view !== 'trips';
+    $('cheapCtl').hidden = opts.view !== 'legs'; $('cheapOnly').checked = opts.cheapOnly;
+    $('orderCtl').hidden = opts.view !== 'legs' || opts.cheapOnly;
+    document.querySelectorAll('[data-order]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.order === opts.order));
     $('cabins').checked = opts.cabins; $('schoolOnly').checked = opts.schoolHolidaysOnly;
     $('afterSchool').checked = opts.leaveAfterSchool; $('afterSchool').disabled = !opts.schoolHolidaysOnly;
   };
@@ -266,7 +278,9 @@
   }));
   document.querySelectorAll('[data-fare]').forEach((b) => b.onclick = () => change(() => { opts.fareType = b.dataset.fare; }));
   document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => change(() => { opts.view = b.dataset.view; }));
+  document.querySelectorAll('[data-order]').forEach((b) => b.onclick = () => change(() => { opts.order = b.dataset.order; }));
   $('cabins').onchange = (e) => change(() => { opts.cabins = e.target.checked; });
+  $('cheapOnly').onchange = (e) => change(() => { opts.cheapOnly = e.target.checked; });
   $('schoolOnly').onchange = (e) => change(() => { opts.schoolHolidaysOnly = e.target.checked; });
   $('afterSchool').onchange = (e) => change(() => { opts.leaveAfterSchool = e.target.checked; });
 
@@ -382,12 +396,13 @@
     (cal.buffer ? `, plus up to ${cal.buffer} school day${cal.buffer > 1 ? 's' : ''} either side` : '') : '';
   const missedTag = (n) => n ? `<span class="tag term">Misses ${n} school day${n > 1 ? 's' : ''}</span>` : '';
 
-  const legRow = (l, dir) => {
+  const expanded = new Set();
+  const legRow = (l, dir, isCheapest) => {
     const r = l.r, c = l.c;
     const was = r[F.prevCheapest];
     const drop = opts.fareType === 'cheapest' && was != null && was !== c.fare
       ? `<span class="tag ${c.fare < was ? 'drop' : 'rise'}">${c.fare < was ? 'Down' : 'Up'} ${gbp(Math.abs(c.fare - was))}</span>` : '';
-    return `<li>
+    return `<li${isCheapest ? ' class="cheapest"' : ''}>
       <span><span class="when">${nice(r[F.depDate])} ${r[F.depTime]}</span>
       ${(dir === 'out' ? opts.outRoute : opts.backRoute) === 'ANY' ? `<span class="route">${routeName(r.route)}</span>` : ''}
       <span class="sub">arrives ${r[F.arrDate] !== r[F.depDate] ? nice(r[F.arrDate]) + ' ' : ''}${r[F.arrTime]}, ${r[F.ship] || ''}${c.cabin ? ', incl. cabin ' + gbp(c.cabin) : ''}</span>
@@ -396,8 +411,8 @@
   };
 
   function renderLegs(outRows, backRows, logicOpts) {
-    const outs = L.cheapestLegs(outRows, cal, logicOpts, 'out', 3);
-    const backs = L.cheapestLegs(backRows, cal, logicOpts, 'back', 3);
+    const outs = L.cheapestLegs(outRows, cal, logicOpts, 'out', Infinity);
+    const backs = L.cheapestLegs(backRows, cal, logicOpts, 'back', Infinity);
     let groups = [...new Set([...outs.keys(), ...backs.keys()])]
       .map((k) => ({ name: k, start: (outs.get(k) || backs.get(k)).start, out: outs.get(k)?.list || [], back: backs.get(k)?.list || [] }))
       .sort((a, b) => a.start - b.start);
@@ -411,16 +426,36 @@
       res.innerHTML = `<div class="empty"><h2>Nothing matches</h2><p>No sailings fit${opts.schoolHolidaysOnly ? ' the school holidays' : ''} with these settings. Try the Cheapest fare${opts.schoolHolidaysOnly ? ', or switch off "School holidays only"' : ''}.</p></div>`;
       return;
     }
-    const col = (label, route, list) => `<div class="legcol"><h3>${label} <span>${routeName(route)}</span></h3>
-      ${list.length ? `<ol class="legs-list">${list.map((l) => legRow(l, label === 'Out' ? 'out' : 'back')).join('')}</ol>` : '<p class="none-yet">No sailings in this holiday yet.</p>'}</div>`;
+    const col = (label, route, list, groupName) => {
+      const dir = label === 'Out' ? 'out' : 'back';
+      if (!list.length) return `<div class="legcol"><h3>${label} <span>${routeName(route)}</span></h3><p class="none-yet">No sailings in this holiday yet.</p></div>`;
+      const cheapest = Math.min(...list.map((l) => l.c.total));
+      if (opts.cheapOnly) {
+        // list arrives cheapest first
+        return `<div class="legcol"><h3>${label} <span>${routeName(route)}, cheapest ${Math.min(3, list.length)} of ${list.length}</span></h3>
+          <ol class="legs-list">${list.slice(0, 3).map((l, i) => legRow(l, dir, i === 0)).join('')}</ol></div>`;
+      }
+      const ordered = opts.order === 'price' ? list.slice()
+        : list.slice().sort((a, b) => (a.r[F.depDate] + a.r[F.depTime] < b.r[F.depDate] + b.r[F.depTime] ? -1 : 1));
+      const key = groupName + '|' + dir, open = expanded.has(key), LIMIT = 12;
+      const shown = open ? ordered : ordered.slice(0, LIMIT);
+      const best = list.find((l) => l.c.total === cheapest);
+      return `<div class="legcol"><h3>${label} <span>${routeName(route)}, ${list.length} sailing${list.length > 1 ? 's' : ''}</span></h3>
+        <p class="bestline">Cheapest <b>${gbp(cheapest)}</b>, ${nice(best.r[F.depDate])} ${best.r[F.depTime]}${(dir === 'out' ? opts.outRoute : opts.backRoute) === 'ANY' ? ', ' + routeName(best.r.route) : ''}</p>
+        <ol class="legs-list">${shown.map((l) => legRow(l, dir, l.c.total === cheapest)).join('')}</ol>
+        ${ordered.length > LIMIT ? `<button class="morebtn" data-expand="${key}">${open ? 'Show fewer' : `Show all ${ordered.length} sailings`}</button>` : ''}</div>`;
+    };
     res.innerHTML = groups.map((g) => {
       const w = cal.windows.find((x) => x.name === g.name);
       return `<section class="window">
         <h2>${g.name}</h2>
         <div class="dates">${windowDates(w)}</div>
-        <div class="legcols">${col('Out', opts.outRoute, g.out)}${col('Back', opts.backRoute, g.back)}</div>
+        <div class="legcols">${col('Out', opts.outRoute, g.out, g.name)}${col('Back', opts.backRoute, g.back, g.name)}</div>
       </section>`;
     }).join('');
+    res.querySelectorAll('[data-expand]').forEach((b) => b.onclick = () => {
+      const k = b.dataset.expand; expanded.has(k) ? expanded.delete(k) : expanded.add(k); render();
+    });
   }
 
   function render() {
