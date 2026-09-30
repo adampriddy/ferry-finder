@@ -116,6 +116,12 @@
   .legs-list li.cheapest .p { background: var(--buoy); border-radius: 6px; padding: 0 6px; }
   .bestline { margin: 0 0 6px; padding: 6px 10px; background: var(--mist); border-radius: 8px; font-size: 14px; }
   .bestline b { font: 700 18px var(--display); background: var(--buoy); padding: 0 5px; border-radius: 4px; }
+  .bestline b + b, .bestline b:last-child:not(:first-of-type) { background: none; }
+  .legs-list li.pickable { cursor: pointer; border-radius: 8px; }
+  .legs-list li.pickable:hover { background: var(--mist); }
+  .legs-list li.selected { background: #e8f0f3; box-shadow: inset 4px 0 0 var(--ink); padding-left: 10px; }
+  .tag.chosen { background: var(--ink); color: var(--white); font-weight: 600; vertical-align: middle; }
+  .afternote { margin: 0 0 6px; font-size: 13px; color: var(--slate); }
   .morebtn { display: block; width: 100%; margin: 4px 0 10px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--mist); cursor: pointer; font-weight: 600; }
   .legs-list .when { font-weight: 600; display: block; }
   .legs-list .route { display: block; font-size: 14px; font-weight: 600; color: var(--ink-2); }
@@ -213,8 +219,15 @@
 
   let data, terms, banks;
   try {
-    [data, terms, banks] = await Promise.all(['data/latest.json', 'data/terms.json', 'data/bank-holidays.json']
-      .map((u) => fetch(u, { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); })));
+    // Fares come straight from GitHub, so the daily scan never needs a Netlify rebuild.
+    // A local preview (localhost) reads the files on disk instead.
+    const REMOTE = 'https://raw.githubusercontent.com/adampriddy/ferry-finder/main/site/data/';
+    const local = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+    const get = (name) => fetch((local ? 'data/' : REMOTE) + name, { cache: 'no-cache' })
+      .then((r) => { if (!r.ok) throw new Error(name + ' ' + r.status); return r.json(); })
+      .catch((e) => (local ? Promise.reject(e) // fall back to the copy deployed with the page
+        : fetch('data/' + name).then((r) => { if (!r.ok) throw e; return r.json(); })));
+    [data, terms, banks] = await Promise.all(['latest.json', 'terms.json', 'bank-holidays.json'].map(get));
   } catch (e) {
     $('meta').textContent = '';
     $('results').innerHTML = `<div class="empty"><h2>No fares yet</h2><p>The page couldn't load its data (${e.message}). Run the scanner once from the Actions tab, then refresh.</p></div>`;
@@ -397,13 +410,16 @@
   const missedTag = (n) => n ? `<span class="tag term">Misses ${n} school day${n > 1 ? 's' : ''}</span>` : '';
 
   const expanded = new Set();
-  const legRow = (l, dir, isCheapest) => {
+  const pickedOut = new Map(); // holiday name -> chosen outbound (this visit only)
+  const legKey = (r) => `${r.route}:${r[F.id]}`;
+  const legRow = (l, dir, isCheapest, isSelected, groupName) => {
     const r = l.r, c = l.c;
     const was = r[F.prevCheapest];
     const drop = opts.fareType === 'cheapest' && was != null && was !== c.fare
       ? `<span class="tag ${c.fare < was ? 'drop' : 'rise'}">${c.fare < was ? 'Down' : 'Up'} ${gbp(Math.abs(c.fare - was))}</span>` : '';
-    return `<li${isCheapest ? ' class="cheapest"' : ''}>
-      <span><span class="when">${nice(r[F.depDate])} ${r[F.depTime]}</span>
+    const cls = [isCheapest && 'cheapest', isSelected && 'selected', dir === 'out' && 'pickable'].filter(Boolean).join(' ');
+    return `<li class="${cls}"${dir === 'out' ? ` data-pick="${groupName}|${legKey(r)}" tabindex="0" role="button" aria-pressed="${!!isSelected}"` : ''}>
+      <span><span class="when">${nice(r[F.depDate])} ${r[F.depTime]}${isSelected ? ' <span class="tag chosen">Your outbound</span>' : ''}</span>
       ${(dir === 'out' ? opts.outRoute : opts.backRoute) === 'ANY' ? `<span class="route">${routeName(r.route)}</span>` : ''}
       <span class="sub">arrives ${r[F.arrDate] !== r[F.depDate] ? nice(r[F.arrDate]) + ' ' : ''}${r[F.arrTime]}, ${r[F.ship] || ''}${c.cabin ? ', incl. cabin ' + gbp(c.cabin) : ''}</span>
       ${missedTag(l.missed)}${drop}${isNew(r) ? '<span class="tag new">Newly released</span>' : ''}</span>
@@ -426,33 +442,51 @@
       res.innerHTML = `<div class="empty"><h2>Nothing matches</h2><p>No sailings fit${opts.schoolHolidaysOnly ? ' the school holidays' : ''} with these settings. Try the Cheapest fare${opts.schoolHolidaysOnly ? ', or switch off "School holidays only"' : ''}.</p></div>`;
       return;
     }
-    const col = (label, route, list, groupName) => {
+    const after = (b, o) => b[F.depDate] + b[F.depTime] > o[F.arrDate] + o[F.arrTime];
+    // extra: { chosen } for the Out column, { chosen, outCost } for Back
+    const col = (label, route, list, groupName, extra) => {
       const dir = label === 'Out' ? 'out' : 'back';
-      if (!list.length) return `<div class="legcol"><h3>${label} <span>${routeName(route)}</span></h3><p class="none-yet">No sailings in this holiday yet.</p></div>`;
+      const head = (sub) => `<h3>${label} <span>${routeName(route)}${sub ? ', ' + sub : ''}</span></h3>`;
+      const note = dir === 'back' && extra.chosen
+        ? `<p class="afternote">Leaving after your outbound arrives, ${nice(extra.chosen.r[F.arrDate])} ${extra.chosen.r[F.arrTime]}</p>`
+        : dir === 'out' ? `<p class="afternote">Tap a sailing to see returns after it.</p>` : '';
+      if (!list.length) return `<div class="legcol">${head()}${note}<p class="none-yet">${dir === 'back' && extra.chosen ? 'No return sailings after your outbound in this holiday.' : 'No sailings in this holiday yet.'}</p></div>`;
       const cheapest = Math.min(...list.map((l) => l.c.total));
+      const best = list.find((l) => l.c.total === cheapest);
+      const isSel = (l) => dir === 'out' && extra.chosen && legKey(l.r) === legKey(extra.chosen.r);
+      const row = (l) => legRow(l, dir, l.c.total === cheapest, isSel(l), groupName);
+      const totalBit = dir === 'back' && extra.chosen ? `, <b>${gbp(cheapest + extra.chosen.c.total)}</b> return with your outbound` : '';
+      const bestline = `<p class="bestline">Cheapest <b>${gbp(cheapest)}</b>, ${nice(best.r[F.depDate])} ${best.r[F.depTime]}${(dir === 'out' ? opts.outRoute : opts.backRoute) === 'ANY' ? ', ' + routeName(best.r.route) : ''}${totalBit}</p>`;
       if (opts.cheapOnly) {
-        // list arrives cheapest first
-        return `<div class="legcol"><h3>${label} <span>${routeName(route)}, cheapest ${Math.min(3, list.length)} of ${list.length}</span></h3>
-          <ol class="legs-list">${list.slice(0, 3).map((l, i) => legRow(l, dir, i === 0)).join('')}</ol></div>`;
+        let top = list.slice(0, 3); // list arrives cheapest first
+        if (dir === 'out' && extra.chosen && !top.some(isSel)) top = [...top, extra.chosen]; // keep your pick visible
+        return `<div class="legcol">${head(`cheapest ${Math.min(3, list.length)} of ${list.length}`)}${note}${dir === 'back' && extra.chosen ? bestline : ''}
+          <ol class="legs-list">${top.map(row).join('')}</ol></div>`;
       }
       const ordered = opts.order === 'price' ? list.slice()
         : list.slice().sort((a, b) => (a.r[F.depDate] + a.r[F.depTime] < b.r[F.depDate] + b.r[F.depTime] ? -1 : 1));
       const key = groupName + '|' + dir, open = expanded.has(key), LIMIT = 12;
       const shown = open ? ordered : ordered.slice(0, LIMIT);
-      const best = list.find((l) => l.c.total === cheapest);
-      return `<div class="legcol"><h3>${label} <span>${routeName(route)}, ${list.length} sailing${list.length > 1 ? 's' : ''}</span></h3>
-        <p class="bestline">Cheapest <b>${gbp(cheapest)}</b>, ${nice(best.r[F.depDate])} ${best.r[F.depTime]}${(dir === 'out' ? opts.outRoute : opts.backRoute) === 'ANY' ? ', ' + routeName(best.r.route) : ''}</p>
-        <ol class="legs-list">${shown.map((l) => legRow(l, dir, l.c.total === cheapest)).join('')}</ol>
+      return `<div class="legcol">${head(`${list.length} sailing${list.length > 1 ? 's' : ''}`)}${note}${bestline}
+        <ol class="legs-list">${shown.map(row).join('')}</ol>
         ${ordered.length > LIMIT ? `<button class="morebtn" data-expand="${key}">${open ? 'Show fewer' : `Show all ${ordered.length} sailings`}</button>` : ''}</div>`;
     };
     res.innerHTML = groups.map((g) => {
       const w = cal.windows.find((x) => x.name === g.name);
+      // Your outbound: the one you clicked, else the cheapest (g.out is cheapest first).
+      const chosen = g.out.find((l) => legKey(l.r) === pickedOut.get(g.name)) || g.out[0] || null;
+      const backs = chosen ? g.back.filter((l) => after(l.r, chosen.r)) : g.back;
       return `<section class="window">
         <h2>${g.name}</h2>
         <div class="dates">${windowDates(w)}</div>
-        <div class="legcols">${col('Out', opts.outRoute, g.out, g.name)}${col('Back', opts.backRoute, g.back, g.name)}</div>
+        <div class="legcols">${col('Out', opts.outRoute, g.out, g.name, { chosen })}${col('Back', opts.backRoute, backs, g.name, { chosen })}</div>
       </section>`;
     }).join('');
+    const pick = (el) => { const [gname, k] = el.dataset.pick.split('|'); pickedOut.set(gname, k); render(); };
+    res.querySelectorAll('[data-pick]').forEach((el) => {
+      el.onclick = () => pick(el);
+      el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(el); } };
+    });
     res.querySelectorAll('[data-expand]').forEach((b) => b.onclick = () => {
       const k = b.dataset.expand; expanded.has(k) ? expanded.delete(k) : expanded.add(k); render();
     });

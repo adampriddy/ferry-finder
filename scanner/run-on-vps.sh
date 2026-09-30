@@ -11,5 +11,5 @@ cp site/data/latest.json /tmp/ferry-prev.json 2>/dev/null || true
 python3 scanner/scan.py
 node scanner/alerts.js /tmp/ferry-prev.json site/data/latest.json
 git add site/data
-git diff --cached --quiet || git commit -qm "Fares $(date -u +%F)"
+git diff --cached --quiet || git commit -qm "Fares $(date -u +%F) [skip netlify]"
 git push --quiet

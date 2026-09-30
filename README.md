@@ -22,7 +22,7 @@ Checks every Brittany Ferries crossing once a day and shows the cheapest return 
 1. Create a **private** GitHub repo and push this folder to it.
 2. In the repo, go to **Settings → Actions → General → Workflow permissions** and choose **Read and write permissions**.
 3. Go to **Actions → Scan ferry fares → Run workflow** to do the first scan. A full scan of all routes takes 30 to 45 minutes because it pauses between requests.
-4. In Netlify, choose **Add new site → Import an existing project**, pick the repo, and set the publish directory to `site` with no build command. Netlify redeploys automatically whenever the scanner commits.
+4. In Netlify, choose **Add new site → Import an existing project**, pick the repo, and set the publish directory to `site` with no build command. The page reads fares straight from GitHub, and the scanner's commits are tagged `[skip netlify]`, so Netlify only rebuilds when you change the page itself.
 5. Optional: GitHub's own scheduler can run late. To make the run time reliable, point a cron-job.org job at the `workflow_dispatch` endpoint, the same way as the stock watchlist.
 
 ## Alerts
